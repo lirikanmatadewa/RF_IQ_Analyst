@@ -1,0 +1,43 @@
+# Docker ignore file for RF IQ Analyst
+
+# Build artifacts
+build/
+*.o
+*.so
+*.a
+moc_*
+ui_*
+qrc_*
+
+# Qt Creator files
+*.pro.user*
+*.qws
+
+# OS specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Version control
+.git/
+.gitignore
+
+# Documentation
+*.md
+README*
+Note.txt
+
+# Docker files (avoid recursive copying)
+Dockerfile*
+.dockerignore
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*~
+*.tmp
+*.temp
