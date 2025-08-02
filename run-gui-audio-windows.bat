@@ -38,7 +38,7 @@ netstat -an | findstr ":4713" >nul 2>&1
 if %errorlevel% neq 0 (
     echo Warning: PulseAudio server not detected on port 4713.
     echo.
-    echo Audio Setup Instructions (Optional):
+    echo Audio Setup Instructions ^(Optional^):
     echo 1. Install PulseAudio for Windows from: https://www.freedesktop.org/wiki/Software/PulseAudio/Ports/Windows/Support/
     echo 2. Configure PulseAudio to accept network connections
     echo 3. Or use WSL2 with PulseAudio for better audio support
@@ -51,30 +51,26 @@ echo.
 echo Starting RF IQ Analyst container with audio support...
 echo.
 
-REM Run the container with GUI and Audio support
+REM Run the container with GUI support (simplified audio setup)
 docker run -it --rm ^
     --network host ^
     -e DISPLAY=host.docker.internal:0.0 ^
     -e QT_X11_NO_MITSHM=1 ^
     -e LIBGL_ALWAYS_INDIRECT=1 ^
-    -e PULSE_RUNTIME_PATH=/mnt/wslg/PulseAudio ^
-    -e PULSE_CLIENTCONFIG=/mnt/wslg/PulseAudio/client.conf ^
     -e XDG_RUNTIME_DIR=/tmp/runtime-analyst ^
+    -e PULSE_SERVER=host.docker.internal:4713 ^
     -v "%cd%\data:/home/analyst/data" ^
-    -v "/mnt/wslg:/mnt/wslg" ^
-    --device /dev/snd ^
     rf-iq-analyst:latest
 
-REM Fallback without WSLg audio if the above fails
+REM Check if the command succeeded
 if %errorlevel% neq 0 (
     echo.
-    echo WSLg audio failed, trying basic audio setup...
+    echo Audio setup failed, trying basic GUI-only mode...
     docker run -it --rm ^
         --network host ^
         -e DISPLAY=host.docker.internal:0.0 ^
         -e QT_X11_NO_MITSHM=1 ^
         -e LIBGL_ALWAYS_INDIRECT=1 ^
-        -e PULSE_SERVER=host.docker.internal:4713 ^
         -e XDG_RUNTIME_DIR=/tmp/runtime-analyst ^
         -v "%cd%\data:/home/analyst/data" ^
         rf-iq-analyst:latest
