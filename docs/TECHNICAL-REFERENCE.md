@@ -259,6 +259,53 @@ ENV QT_X11_NO_MITSHM=1          # X11 optimization
 ENV DISPLAY=:0                   # X11 display target
 ENV PYTHONPATH=/usr/local/lib    # Python module path
 ENV TF_CPP_MIN_LOG_LEVEL=2       # TensorFlow logging
+ENV XDG_RUNTIME_DIR=/tmp/runtime-analyst  # Suppress XDG warnings
+ENV PULSE_SERVER=host.docker.internal:4713  # PulseAudio server
+```
+
+## Audio Architecture
+
+### ALSA Integration
+The application uses ALSA (Advanced Linux Sound Architecture) for audio functionality:
+
+**Audio Components**:
+- **libasound2**: ALSA runtime library
+- **pulseaudio-utils**: PulseAudio integration
+- **alsa-utils**: ALSA command-line utilities
+
+**Container Audio Limitations**:
+```
+ALSA lib confmisc.c:855:(parse_card) cannot find card '0'
+ALSA lib pcm.c:2664:(snd_pcm_open_noupdate) Unknown PCM default
+Playback open error: No such file or directory
+```
+
+These warnings occur because:
+1. Docker containers don't have direct hardware access
+2. Qt initializes audio subsystems even when not actively used
+3. Signal processing doesn't require audio hardware
+
+### Audio Solutions
+
+**1. No Audio (Default)**:
+```dockerfile
+# Runtime includes ALSA libraries but no hardware access
+RUN apt-get install -y libasound2 alsa-utils
+```
+
+**2. PulseAudio Bridge**:
+```dockerfile
+# Add PulseAudio support
+RUN apt-get install -y pulseaudio-utils
+ENV PULSE_SERVER=host.docker.internal:4713
+```
+
+**3. WSLg Integration** (Windows 11):
+```dockerfile
+ENV PULSE_RUNTIME_PATH=/mnt/wslg/PulseAudio
+ENV PULSE_CLIENTCONFIG=/mnt/wslg/PulseAudio/client.conf
+VOLUME /mnt/wslg:/mnt/wslg
+DEVICE /dev/snd:/dev/snd
 ```
 
 ## Performance Optimization

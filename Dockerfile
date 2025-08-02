@@ -128,6 +128,8 @@ RUN apt-get update && apt-get install -y \
     libopencv-highgui4.5d \
     libopencv-photo4.5d \
     libasound2 \
+    pulseaudio-utils \
+    alsa-utils \
     zlib1g \
     python3 \
     python3-pip \

@@ -34,6 +34,7 @@ if %errorlevel% neq 0 (
 
 echo.
 echo Starting RF IQ Analyst container...
+echo Note: ALSA audio warnings are expected in containerized environment
 echo.
 
 REM Run the container with GUI support
@@ -42,6 +43,7 @@ docker run -it --rm ^
     -e DISPLAY=host.docker.internal:0.0 ^
     -e QT_X11_NO_MITSHM=1 ^
     -e LIBGL_ALWAYS_INDIRECT=1 ^
+    -e XDG_RUNTIME_DIR=/tmp/runtime-analyst ^
     -v "%cd%\data:/home/analyst/data" ^
     rf-iq-analyst:latest
 

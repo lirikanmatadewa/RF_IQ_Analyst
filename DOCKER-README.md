@@ -39,6 +39,8 @@ Once the container starts:
 4. Train models with your signal data
 5. Classify unknown signals using trained models
 
+**Note**: You may see ALSA audio warnings in the console - these are normal in containerized environments and don't affect the core signal processing functionality. See the [Audio Support](#audio-support) section for audio setup if needed.
+
 ## Prerequisites & System Requirements
 
 ### Hardware Requirements
@@ -64,6 +66,7 @@ Once the container starts:
 - **`quick-start-windows.bat`** - Complete automated setup (build + run)
 - **`build-docker.bat`** - Build the Docker image only
 - **`run-gui-windows.bat`** - Run the application with X11 GUI forwarding
+- **`run-gui-audio-windows.bat`** - Run with X11 GUI and PulseAudio support
 - **`test-x11-windows.bat`** - Test X11 connection to Windows
 - **`validate-setup.bat`** - Check Docker and X server requirements
 
@@ -150,6 +153,57 @@ ALSA audio warnings are normal and expected in containerized environments - they
 - **TensorFlow errors**: Ensure sufficient RAM (8GB+) for model training
 - **Model loading fails**: Check if training data files (.npy) are accessible
 - **UDP socket errors**: Ports 5005-5006 might be in use by other applications
+
+## Audio Support
+
+### Understanding ALSA Warnings
+The ALSA (Advanced Linux Sound Architecture) warnings you see are normal in Docker containers:
+```
+ALSA lib confmisc.c:855:(parse_card) cannot find card '0'
+ALSA lib pcm.c:2664:(snd_pcm_open_noupdate) Unknown PCM default
+Playback open error: No such file or directory
+```
+
+These occur because:
+- The container doesn't have direct access to host audio hardware
+- Qt applications try to initialize audio systems even if not using audio
+- The warnings don't affect signal processing or analysis functionality
+
+### Audio Setup Options
+
+#### Option 1: Ignore Audio (Recommended for Signal Processing)
+Use the standard script - audio warnings are harmless:
+```cmd
+run-gui-windows.bat
+```
+
+#### Option 2: PulseAudio Setup (Advanced Users)
+For full audio support, use the enhanced script:
+```cmd
+run-gui-audio-windows.bat
+```
+
+**PulseAudio Setup Requirements**:
+1. **Windows 11 with WSL2**: Use WSLg built-in audio
+2. **Windows 10**: Install PulseAudio for Windows
+   - Download from: https://www.freedesktop.org/wiki/Software/PulseAudio/Ports/Windows/Support/
+   - Configure network access on port 4713
+3. **Alternative**: Use WSL2 with PulseAudio bridge
+
+#### Option 3: Docker Compose with Audio
+```cmd
+# Basic audio support
+docker-compose up rf-iq-analyst
+
+# WSLg audio support (Windows 11)
+docker-compose up rf-iq-analyst-wslg
+```
+
+### Audio-Related Environment Variables
+- **`XDG_RUNTIME_DIR`**: Set to `/tmp/runtime-analyst` to suppress XDG warnings
+- **`PULSE_SERVER`**: PulseAudio server address (e.g., `host.docker.internal:4713`)
+- **`PULSE_RUNTIME_PATH`**: WSLg PulseAudio socket path
+- **`PULSE_CLIENTCONFIG`**: PulseAudio client configuration
 
 ### Performance Issues
 - **Slow GUI response**: Increase Docker Desktop memory allocation (8GB+)

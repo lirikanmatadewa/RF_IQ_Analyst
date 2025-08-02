@@ -10,10 +10,33 @@ services:
       - DISPLAY=host.docker.internal:0.0
       - QT_X11_NO_MITSHM=1
       - LIBGL_ALWAYS_INDIRECT=1
+      # Audio support via PulseAudio
+      - PULSE_SERVER=host.docker.internal:4713
+      - XDG_RUNTIME_DIR=/tmp/runtime-analyst
     volumes:
       # Mount directory for input/output files
       - ./data:/home/analyst/data
     # Use host network for easier X11 connection on Windows
+    network_mode: "host"
+
+  # Service with WSLg audio support (Windows 11 WSL2)
+  rf-iq-analyst-wslg:
+    build: .
+    image: rf-iq-analyst:latest
+    container_name: rf-iq-analyst-wslg
+    environment:
+      - DISPLAY=host.docker.internal:0.0
+      - QT_X11_NO_MITSHM=1
+      - LIBGL_ALWAYS_INDIRECT=1
+      # WSLg audio configuration
+      - PULSE_RUNTIME_PATH=/mnt/wslg/PulseAudio
+      - PULSE_CLIENTCONFIG=/mnt/wslg/PulseAudio/client.conf
+      - XDG_RUNTIME_DIR=/tmp/runtime-analyst
+    volumes:
+      - ./data:/home/analyst/data
+      - /mnt/wslg:/mnt/wslg
+    devices:
+      - /dev/snd:/dev/snd
     network_mode: "host"
 
   # Alternative service for Linux/macOS X11
