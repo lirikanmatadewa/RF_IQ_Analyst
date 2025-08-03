@@ -16,6 +16,13 @@ services:
     volumes:
       # Mount directory for input/output files
       - ./data:/home/analyst/data
+      # Mount Windows user directories for file access
+      - C:/Users:/mnt/windows/Users
+      - C:/:/mnt/windows/C
+      # Common data directories
+      - ${USERPROFILE}/Documents:/mnt/windows/Documents
+      - ${USERPROFILE}/Downloads:/mnt/windows/Downloads
+      - ${USERPROFILE}/Desktop:/mnt/windows/Desktop
     # Use host network for easier X11 connection on Windows
     network_mode: "host"
 
@@ -34,6 +41,12 @@ services:
       - XDG_RUNTIME_DIR=/tmp/runtime-analyst
     volumes:
       - ./data:/home/analyst/data
+      # Mount Windows user directories for file access
+      - C:/Users:/mnt/windows/Users
+      - C:/:/mnt/windows/C
+      - ${USERPROFILE}/Documents:/mnt/windows/Documents
+      - ${USERPROFILE}/Downloads:/mnt/windows/Downloads
+      - ${USERPROFILE}/Desktop:/mnt/windows/Desktop
       - /mnt/wslg:/mnt/wslg
     devices:
       - /dev/snd:/dev/snd
@@ -51,6 +64,10 @@ services:
       # Mount X11 socket for GUI display (Linux/macOS)
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ./data:/home/analyst/data
+      # Mount common directories (adjust paths for your OS)
+      - ${HOME}/Documents:/mnt/host/Documents
+      - ${HOME}/Downloads:/mnt/host/Downloads
+      - ${HOME}/Desktop:/mnt/host/Desktop
     
   # Alternative service for headless operation
   rf-iq-analyst-headless:
@@ -62,6 +79,10 @@ services:
     tty: true
     volumes:
       - ./data:/home/analyst/data
+      # Mount common directories for file access
+      - ${HOME}/Documents:/mnt/host/Documents
+      - ${HOME}/Downloads:/mnt/host/Downloads
+      - ${HOME}/Desktop:/mnt/host/Desktop
 
 networks:
   default:

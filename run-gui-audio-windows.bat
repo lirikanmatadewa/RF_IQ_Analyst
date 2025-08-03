@@ -60,6 +60,11 @@ docker run -it --rm ^
     -e XDG_RUNTIME_DIR=/tmp/runtime-analyst ^
     -e PULSE_SERVER=host.docker.internal:4713 ^
     -v "%cd%\data:/home/analyst/data" ^
+    -v "C:\Users:/mnt/windows/Users" ^
+    -v "C:\:/mnt/windows/C" ^
+    -v "%USERPROFILE%\Documents:/mnt/windows/Documents" ^
+    -v "%USERPROFILE%\Downloads:/mnt/windows/Downloads" ^
+    -v "%USERPROFILE%\Desktop:/mnt/windows/Desktop" ^
     rf-iq-analyst:latest
 
 REM Check if the command succeeded
@@ -73,6 +78,11 @@ if %errorlevel% neq 0 (
         -e LIBGL_ALWAYS_INDIRECT=1 ^
         -e XDG_RUNTIME_DIR=/tmp/runtime-analyst ^
         -v "%cd%\data:/home/analyst/data" ^
+        -v "C:\Users:/mnt/windows/Users" ^
+        -v "C:\:/mnt/windows/C" ^
+        -v "%USERPROFILE%\Documents:/mnt/windows/Documents" ^
+        -v "%USERPROFILE%\Downloads:/mnt/windows/Downloads" ^
+        -v "%USERPROFILE%\Desktop:/mnt/windows/Desktop" ^
         rf-iq-analyst:latest
 )
 

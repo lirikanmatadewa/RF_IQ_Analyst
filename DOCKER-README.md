@@ -39,6 +39,17 @@ Once the container starts:
 4. Train models with your signal data
 5. Classify unknown signals using trained models
 
+### Step 4: Accessing Windows Files
+The application can now access your Windows directories through mounted paths:
+- **Windows C: Drive**: `/mnt/windows/C/` in the application
+- **All Users**: `/mnt/windows/Users/` in the application  
+- **Your Documents**: `/mnt/windows/Documents/` in the application
+- **Your Downloads**: `/mnt/windows/Downloads/` in the application
+- **Your Desktop**: `/mnt/windows/Desktop/` in the application
+- **Project Data**: `/home/analyst/data/` (local data directory)
+
+**File Dialog Navigation**: When opening files in the application, navigate to these mounted paths to access your Windows files and directories.
+
 **Note**: You may see ALSA audio warnings in the console - these are normal in containerized environments and don't affect the core signal processing functionality. See the [Audio Support](#audio-support) section for audio setup if needed.
 
 ## Prerequisites & System Requirements
@@ -134,6 +145,55 @@ docker run --rm -e DISPLAY=host.docker.internal:0.0 -e QT_X11_NO_MITSHM=1 rf-iq-
 docker-compose up
 ```
 
+## Windows File System Access
+
+### Overview
+The Docker container is configured to mount Windows directories so you can easily access your files from within the RF IQ Analyst application.
+
+### Mounted Windows Directories
+When the container runs, these Windows locations are available inside the application:
+
+| Windows Location | Container Path | Description |
+|-----------------|----------------|-------------|
+| `C:\` | `/mnt/windows/C/` | Full C: drive access |
+| `C:\Users\` | `/mnt/windows/Users/` | All user directories |
+| `%USERPROFILE%\Documents` | `/mnt/windows/Documents/` | Your Documents folder |
+| `%USERPROFILE%\Downloads` | `/mnt/windows/Downloads/` | Your Downloads folder |
+| `%USERPROFILE%\Desktop` | `/mnt/windows/Desktop/` | Your Desktop |
+| Local `./data/` | `/home/analyst/data/` | Project data directory |
+
+### How to Open Windows Files
+1. **Start the application** using `quick-start-windows.bat` or `run-gui-windows.bat`
+2. **Open File Dialog** in the RF IQ Analyst application (File → Open)
+3. **Navigate** to the mounted Windows paths:
+   - Type `/mnt/windows/` in the location bar, or
+   - Browse to `/mnt/windows/Documents/` for your Documents
+   - Browse to `/mnt/windows/Downloads/` for Downloads
+   - Browse to `/mnt/windows/Desktop/` for Desktop files
+4. **Select your IQ data files** from any Windows location
+
+### Example File Paths
+- Opening files from Downloads: `/mnt/windows/Downloads/my_signal_data.iq`
+- Opening files from Documents: `/mnt/windows/Documents/RF_Data/signal.vrt`
+- Opening files from any drive: `/mnt/windows/C/Data/measurements/`
+
+### Custom Directory Mounting
+To mount additional Windows directories, edit the Docker run command or docker-compose.yml:
+
+**Manual Docker Command:**
+```cmd
+docker run -it --rm ^
+    -e DISPLAY=host.docker.internal:0.0 ^
+    -v "D:\MySignalData:/mnt/windows/MySignalData" ^
+    rf-iq-analyst:latest
+```
+
+**Docker Compose (add to volumes section):**
+```yaml
+volumes:
+  - D:/MySignalData:/mnt/windows/MySignalData
+```
+
 ## Troubleshooting
 
 ### X11 Connection Issues
@@ -153,6 +213,14 @@ ALSA audio warnings are normal and expected in containerized environments - they
 - **TensorFlow errors**: Ensure sufficient RAM (8GB+) for model training
 - **Model loading fails**: Check if training data files (.npy) are accessible
 - **UDP socket errors**: Ports 5005-5006 might be in use by other applications
+
+### Windows Directory Access Issues
+- **Cannot see Windows files**: Check Docker Desktop file sharing settings
+  - Go to Docker Desktop → Settings → Resources → File Sharing
+  - Ensure C: drive is shared for Docker
+- **Permission denied**: Run Docker Desktop as Administrator if needed
+- **Path not found**: Verify paths exist and use forward slashes in container paths
+- **Test directory mounting**: Run `test-windows-mount.bat` to verify setup
 
 ## Audio Support
 
@@ -245,11 +313,22 @@ docker-compose up rf-iq-analyst-wslg
 ## Data Management
 
 ### Persistent Data Storage
-By default, the container doesn't persist data. To save your work:
+The container now automatically mounts common Windows directories for easy file access:
 
+**Pre-configured Mounts:**
+- **Project Data**: `./data` → `/home/analyst/data/` (for saving work)
+- **Windows C: Drive**: `C:\` → `/mnt/windows/C/` (full drive access)
+- **User Documents**: `%USERPROFILE%\Documents` → `/mnt/windows/Documents/`
+- **User Downloads**: `%USERPROFILE%\Downloads` → `/mnt/windows/Downloads/`
+- **User Desktop**: `%USERPROFILE%\Desktop` → `/mnt/windows/Desktop/`
+
+**Additional Custom Mounts:**
 ```cmd
-# Run with volume mount for data persistence
-docker run --rm -e DISPLAY=host.docker.internal:0.0 -e QT_X11_NO_MITSHM=1 -v "%USERPROFILE%\rf-iq-data:/home/analyst/data" rf-iq-analyst:latest
+# Run with custom directory mount
+docker run --rm -e DISPLAY=host.docker.internal:0.0 -e QT_X11_NO_MITSHM=1 ^
+    -v "D:\MyRFData:/mnt/windows/MyRFData" ^
+    -v "E:\Measurements:/mnt/windows/Measurements" ^
+    rf-iq-analyst:latest
 ```
 
 ### Supported File Formats
@@ -259,10 +338,31 @@ docker run --rm -e DISPLAY=host.docker.internal:0.0 -e QT_X11_NO_MITSHM=1 -v "%U
 - **Export**: CSV, JSON for analysis results
 
 ### Data Locations in Container
-- **Application data**: `/home/analyst/data/`
+- **Application data**: `/home/analyst/data/` (local project data)
+- **Windows C: drive**: `/mnt/windows/C/` (full Windows C: drive)
+- **Windows user files**: 
+  - Documents: `/mnt/windows/Documents/`
+  - Downloads: `/mnt/windows/Downloads/`
+  - Desktop: `/mnt/windows/Desktop/`
+  - All users: `/mnt/windows/Users/`
 - **ML models**: `/home/analyst/models/`
 - **Python scripts**: `/usr/local/share/rf-iq-analyst/classifiers/`
 - **Logs**: `/home/analyst/logs/`
+
+### File Access Examples
+**Opening Signal Files:**
+1. Launch RF IQ Analyst application
+2. Use File → Open dialog
+3. Navigate to mounted Windows directories:
+   ```
+   /mnt/windows/Downloads/signal_data.iq
+   /mnt/windows/Documents/RF_Measurements/test.vrt
+   /mnt/windows/C/Data/recordings/measurement.bin
+   ```
+
+**Saving Analysis Results:**
+- Save to project directory: `/home/analyst/data/results/`
+- Export to Windows: `/mnt/windows/Documents/RF_Analysis/`
 
 ## Additional Information
 
