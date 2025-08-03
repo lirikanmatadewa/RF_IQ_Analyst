@@ -302,3 +302,6 @@ analyst/build/Analyst/moc_wgt_scope.cpp
 analyst/build/Analyst/moc_wgt_timeeditor.cpp
 
 analyst/build/Analyst/moc_wgt_waterfall.cpp
+
+# Distribution directory (contains build artifacts)
+dist/

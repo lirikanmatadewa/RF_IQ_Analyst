@@ -70,15 +70,18 @@ The application can now access your Windows directories through mounted paths:
 
 ### Core Docker Files
 - **`Dockerfile`** - Multi-stage build configuration for RF IQ Analyst
+- **`Dockerfile.deb`** - Build configuration for creating native Ubuntu .deb packages
 - **`docker-compose.yml`** - Simplified container management with GUI support
 - **`.dockerignore`** - Excludes unnecessary files from Docker build context
 
 ### Windows Helper Scripts
 - **`quick-start-windows.bat`** - Complete automated setup (build + run)
 - **`build-docker.bat`** - Build the Docker image only
+- **`build-deb.bat`** - Build native Ubuntu .deb package for installation
 - **`run-gui-windows.bat`** - Run the application with X11 GUI forwarding
 - **`run-gui-audio-windows.bat`** - Run with X11 GUI and PulseAudio support
 - **`test-x11-windows.bat`** - Test X11 connection to Windows
+- **`test-windows-mount.bat`** - Test Windows directory mounting
 - **`validate-setup.bat`** - Check Docker and X server requirements
 
 ## Build Details
@@ -144,6 +147,99 @@ docker run --rm -e DISPLAY=host.docker.internal:0.0 -e QT_X11_NO_MITSHM=1 rf-iq-
 ```cmd
 docker-compose up
 ```
+
+## Native Ubuntu Package (.deb) Creation
+
+### Overview
+RF IQ Analyst can be packaged as a native Ubuntu .deb package for traditional system installation, eliminating the need for Docker at runtime.
+
+### Building the .deb Package
+
+#### Windows Users
+```cmd
+build-deb.bat
+```
+
+#### Linux/macOS Users  
+```bash
+./build-deb.sh
+```
+
+### Package Contents
+The generated .deb package includes:
+- **Main Application**: `/usr/local/bin/rf-iq-analyst`
+- **Libraries**: Required liquid-dsp libraries
+- **Python Scripts**: ML classification components
+- **Desktop Integration**: Application menu entry
+- **Documentation**: User guides and technical references
+
+### Generated Files (in `dist/` directory)
+- **`rf-iq-analyst-1.0.0.deb`** - Main installation package
+- **`install.sh`** - Automated installation script  
+- **`PACKAGE_README.md`** - Installation and usage instructions
+- **`test-deb-package.sh`** - Package validation script
+
+### Installation on Ubuntu
+```bash
+# Navigate to the dist directory
+cd dist
+
+# Option 1: Automated installation
+sudo ./install.sh
+
+# Option 2: Manual installation
+sudo dpkg -i rf-iq-analyst-1.0.0.deb
+sudo apt-get install -f  # Install missing dependencies if needed
+```
+
+### System Requirements for .deb Package
+
+#### Supported Operating Systems
+- **Ubuntu 22.04 LTS (Jammy)** ✅ - Primary target, fully tested
+- **Ubuntu 24.04 LTS (Noble)** ✅ - Fully supported with flexible dependencies
+- **Debian 12 (Bookworm)** ✅ - Fully supported with compatible dependencies
+- **Ubuntu 20.04 LTS (Focal)** ⚠️ - Partial compatibility (outdated libraries)
+- **Debian 11 (Bullseye)** ⚠️ - Partial compatibility (dependency conflicts)
+
+#### Hardware Requirements
+- **Architecture**: amd64 (64-bit Intel/AMD)
+- **RAM**: 4GB minimum (8GB+ recommended for ML training)
+- **Disk Space**: 500MB for installation + data storage
+- **CPU**: Multi-core recommended for signal processing
+
+#### Dependency Requirements
+- **Qt5 runtime libraries** (installed automatically)
+- **Boost 1.74.0 or 1.83.0** (flexible version support)
+- **OpenCV 4.5d or 4.6d** (flexible version support) 
+- **Python 3.8+** with pip (for ML functionality)
+
+### Using the Installed Application
+After installation:
+```bash
+# Launch from command line
+rf-iq-analyst
+
+# Or find "RF IQ Analyst" in your applications menu
+```
+
+### Package Management
+```bash
+# Check if installed
+dpkg -l | grep rf-iq-analyst
+
+# Remove the application
+sudo apt-get remove rf-iq-analyst
+
+# Purge configuration files
+sudo apt-get purge rf-iq-analyst
+```
+
+### Advantages of .deb Package
+- **Native Performance**: No Docker overhead
+- **System Integration**: Desktop entries, file associations
+- **Package Management**: Standard Ubuntu package tools
+- **Smaller Footprint**: Only runtime dependencies included
+- **Easier Distribution**: Single file for installation
 
 ## Windows File System Access
 

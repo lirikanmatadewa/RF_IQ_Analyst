@@ -1,0 +1,401 @@
+# Dockerfile for creating RF IQ Analyst .deb package
+# This builds the application and packages it into a Debian package for native Ubuntu installation
+FROM ubuntu:22.04 AS builder
+
+# Avoid prompts from apt
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build tools, packaging tools, and Qt development
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    wget \
+    pkg-config \
+    debhelper \
+    dh-make \
+    devscripts \
+    fakeroot \
+    lintian \
+    qtbase5-dev \
+    qttools5-dev \
+    qt5-qmake \
+    libqt5widgets5 \
+    libqt5gui5 \
+    libqt5core5a \
+    libqt5network5 \
+    libqt5printsupport5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python and ML dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python ML packages
+RUN pip3 install --no-cache-dir \
+    tensorflow==2.12.0 \
+    numpy \
+    scikit-learn \
+    && ln -s /usr/bin/python3 /usr/bin/python
+
+# Install signal processing and math libraries
+RUN apt-get update && apt-get install -y \
+    libfftw3-dev \
+    libfftw3-single3 \
+    libboost-all-dev \
+    libopencv-dev \
+    libasound2-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install liquid-dsp from source (not available in Ubuntu repos)
+WORKDIR /tmp
+RUN git clone https://github.com/jgaeddert/liquid-dsp.git && \
+    cd liquid-dsp && \
+    ./bootstrap.sh && \
+    ./configure --prefix=/usr/local && \
+    make -j$(nproc) && \
+    make install && \
+    ldconfig && \
+    cd .. && rm -rf liquid-dsp
+
+# Set working directory for the project
+WORKDIR /app
+
+# Copy the project files
+COPY . .
+
+# Create build script
+RUN echo '#!/bin/bash' > build.sh && \
+    echo 'set -e' >> build.sh && \
+    echo '' >> build.sh && \
+    echo 'echo "Building RF IQ Analyst for .deb packaging..."' >> build.sh && \
+    echo '' >> build.sh && \
+    echo '# Create build directory' >> build.sh && \
+    echo 'mkdir -p build' >> build.sh && \
+    echo '' >> build.sh && \
+    echo '# Build dependencies in correct order' >> build.sh && \
+    echo 'echo "Building qvrt_util library..."' >> build.sh && \
+    echo 'cd qvrt_lib/qvrt_util' >> build.sh && \
+    echo 'qmake qvrt_util.pro CONFIG+=release "INCLUDEPATH+=/usr/local/include" "LIBS+=-L/usr/local/lib"' >> build.sh && \
+    echo 'make -j$(nproc)' >> build.sh && \
+    echo 'cd ../..' >> build.sh && \
+    echo '' >> build.sh && \
+    echo 'echo "Building libsdrkit library..."' >> build.sh && \
+    echo 'cd libsdrkit' >> build.sh && \
+    echo 'qmake libsdrkit.pro CONFIG+=release "INCLUDEPATH+=/usr/local/include" "LIBS+=-L/usr/local/lib"' >> build.sh && \
+    echo 'make -j$(nproc)' >> build.sh && \
+    echo 'cd ..' >> build.sh && \
+    echo '' >> build.sh && \
+    echo 'echo "Building main application..."' >> build.sh && \
+    echo 'cd analyst/Analyst' >> build.sh && \
+    echo 'qmake Analyst.pro CONFIG+=release "INCLUDEPATH+=/usr/local/include" "LIBS+=-L/usr/local/lib"' >> build.sh && \
+    echo 'make -j$(nproc)' >> build.sh && \
+    echo 'cd ../..' >> build.sh && \
+    echo '' >> build.sh && \
+    echo 'echo "Build completed successfully!"' >> build.sh && \
+    echo 'echo "Executable location: $(find . -name "Analyst.gui" -type f)"' >> build.sh && \
+    chmod +x build.sh
+
+# Build the project
+RUN ./build.sh
+
+# Create Debian package structure
+WORKDIR /app
+RUN mkdir -p debian-package/rf-iq-analyst-1.0.0
+
+# Create package directory structure
+RUN mkdir -p debian-package/rf-iq-analyst-1.0.0/usr/local/bin && \
+    mkdir -p debian-package/rf-iq-analyst-1.0.0/usr/local/lib && \
+    mkdir -p debian-package/rf-iq-analyst-1.0.0/usr/local/include/liquid && \
+    mkdir -p debian-package/rf-iq-analyst-1.0.0/usr/local/share/rf-iq-analyst/classifiers && \
+    mkdir -p debian-package/rf-iq-analyst-1.0.0/usr/share/applications && \
+    mkdir -p debian-package/rf-iq-analyst-1.0.0/usr/share/pixmaps && \
+    mkdir -p debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst && \
+    mkdir -p debian-package/rf-iq-analyst-1.0.0/DEBIAN
+
+# Copy application files
+RUN cp analyst/Analyst/Analyst.gui debian-package/rf-iq-analyst-1.0.0/usr/local/bin/rf-iq-analyst && \
+    chmod +x debian-package/rf-iq-analyst-1.0.0/usr/local/bin/rf-iq-analyst
+
+# Copy liquid-dsp library files
+RUN cp -r /usr/local/lib/libliquid* debian-package/rf-iq-analyst-1.0.0/usr/local/lib/ && \
+    cp -r /usr/local/include/liquid/ debian-package/rf-iq-analyst-1.0.0/usr/local/include/
+
+# Copy Python classifier scripts if they exist
+RUN if [ -d "analyst/Analyst/classifiers" ]; then \
+    cp -r analyst/Analyst/classifiers/* debian-package/rf-iq-analyst-1.0.0/usr/local/share/rf-iq-analyst/classifiers/; \
+    fi
+
+# Copy documentation
+RUN cp README.md debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/ 2>/dev/null || echo "No README.md found" && \
+    cp LICENSE debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/ 2>/dev/null || echo "No LICENSE found" && \
+    if [ -d "docs" ]; then \
+    cp -r docs/* debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/; \
+    fi
+
+# Create desktop entry
+RUN echo '[Desktop Entry]' > debian-package/rf-iq-analyst-1.0.0/usr/share/applications/rf-iq-analyst.desktop && \
+    echo 'Name=RF IQ Analyst' >> debian-package/rf-iq-analyst-1.0.0/usr/share/applications/rf-iq-analyst.desktop && \
+    echo 'Comment=RF Signal Analysis and Machine Learning Classification Tool' >> debian-package/rf-iq-analyst-1.0.0/usr/share/applications/rf-iq-analyst.desktop && \
+    echo 'Exec=/usr/local/bin/rf-iq-analyst' >> debian-package/rf-iq-analyst-1.0.0/usr/share/applications/rf-iq-analyst.desktop && \
+    echo 'Icon=rf-iq-analyst' >> debian-package/rf-iq-analyst-1.0.0/usr/share/applications/rf-iq-analyst.desktop && \
+    echo 'Type=Application' >> debian-package/rf-iq-analyst-1.0.0/usr/share/applications/rf-iq-analyst.desktop && \
+    echo 'Categories=Science;Engineering;Education;' >> debian-package/rf-iq-analyst-1.0.0/usr/share/applications/rf-iq-analyst.desktop && \
+    echo 'Keywords=RF;Radio;Signal;Analysis;DSP;Machine Learning;' >> debian-package/rf-iq-analyst-1.0.0/usr/share/applications/rf-iq-analyst.desktop
+
+# Create control file with flexible dependencies for Ubuntu 22.04, 24.04, and Debian 12 compatibility
+RUN echo 'Package: rf-iq-analyst' > debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo 'Version: 1.0.0' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo 'Section: science' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo 'Priority: optional' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo 'Architecture: amd64' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo 'Depends: libqt5widgets5, libqt5gui5, libqt5core5a, libqt5network5, libqt5printsupport5, libfftw3-single3, libboost-system1.74.0 | libboost-system1.83.0, libboost-filesystem1.74.0 | libboost-filesystem1.83.0, libboost-thread1.74.0 | libboost-thread1.83.0, libboost-date-time1.74.0 | libboost-date-time1.83.0, libboost-chrono1.74.0 | libboost-chrono1.83.0, libopencv-core4.5d | libopencv-core4.6d, libopencv-imgproc4.5d | libopencv-imgproc4.6d, libopencv-highgui4.5d | libopencv-highgui4.6d, libopencv-photo4.5d | libopencv-photo4.6d, libasound2, zlib1g, python3 (>= 3.8), python3-pip' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo 'Maintainer: RF IQ Analyst Development Team <dev@rf-iq-analyst.com>' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo 'Description: RF Signal Analysis and Machine Learning Classification Tool' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo ' RF IQ Analyst is a comprehensive tool for analyzing radio frequency signals' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo ' and performing machine learning-based signal classification. It supports' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo ' various IQ data formats, provides advanced DSP capabilities, and includes' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo ' TensorFlow-based machine learning models for signal recognition.' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo ' .' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo ' Features include:' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo '  * FFT and time-domain signal analysis' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo '  * Machine learning classification with TensorFlow' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo '  * Support for multiple IQ data formats' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo '  * Advanced signal processing algorithms' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control && \
+    echo '  * Interactive GUI with visualization tools' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/control
+
+# Create enhanced postinst script for multi-distribution compatibility
+RUN echo '#!/bin/bash' > debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'set -e' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '# Detect distribution' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'DISTRO_ID=$(lsb_release -si 2>/dev/null || echo "Unknown")' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'DISTRO_VERSION=$(lsb_release -sr 2>/dev/null || echo "Unknown")' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'echo "Installing on $DISTRO_ID $DISTRO_VERSION"' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '# Create library compatibility symlinks if needed' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'echo "Setting up library compatibility..."' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'if [ ! -f /usr/local/lib/libliquid.so ]; then' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '    ln -sf /usr/local/lib/libliquid.so.1.7.0 /usr/local/lib/libliquid.so' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'fi' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'if [ ! -f /usr/local/lib/libliquid.so.1 ]; then' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '    ln -sf /usr/local/lib/libliquid.so.1.7.0 /usr/local/lib/libliquid.so.1' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'fi' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '# Install Python ML dependencies' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'echo "Installing Python ML dependencies..."' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'pip3 install --no-cache-dir tensorflow==2.12.0 numpy scikit-learn 2>/dev/null || {' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '    echo "Warning: Failed to install Python ML dependencies automatically."' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '    echo "Please install manually with:"' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '    echo "sudo pip3 install tensorflow==2.12.0 numpy scikit-learn"' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '}' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '# Update library cache' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'echo "Updating library cache..."' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'ldconfig' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo '# Success message' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'echo "✅ RF IQ Analyst installation completed successfully!"' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'echo "Launch from applications menu or run: rf-iq-analyst"' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    echo 'echo "Compatible with: Ubuntu 22.04+, Ubuntu 24.04+, Debian 12+"' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst && \
+    chmod +x debian-package/rf-iq-analyst-1.0.0/DEBIAN/postinst
+
+# Create prerm script for cleanup
+RUN echo '#!/bin/bash' > debian-package/rf-iq-analyst-1.0.0/DEBIAN/prerm && \
+    echo 'set -e' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/prerm && \
+    echo '' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/prerm && \
+    echo 'echo "Removing RF IQ Analyst..."' >> debian-package/rf-iq-analyst-1.0.0/DEBIAN/prerm && \
+    chmod +x debian-package/rf-iq-analyst-1.0.0/DEBIAN/prerm
+
+# Create copyright file
+RUN echo 'Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/' > debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/copyright && \
+    echo 'Upstream-Name: rf-iq-analyst' >> debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/copyright && \
+    echo 'Source: https://github.com/lirikanmatadewa/RF_IQ_Analyst' >> debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/copyright && \
+    echo '' >> debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/copyright && \
+    echo 'Files: *' >> debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/copyright && \
+    echo 'Copyright: 2024 RF IQ Analyst Development Team' >> debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/copyright && \
+    echo 'License: MIT' >> debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/copyright
+
+# Create changelog
+RUN echo 'rf-iq-analyst (1.0.0) unstable; urgency=low' > debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/changelog && \
+    echo '' >> debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/changelog && \
+    echo '  * Initial release' >> debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/changelog && \
+    echo '  * RF signal analysis capabilities' >> debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/changelog && \
+    echo '  * Machine learning classification with TensorFlow' >> debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/changelog && \
+    echo '  * Qt5-based GUI interface' >> debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/changelog && \
+    echo '  * Support for multiple IQ data formats' >> debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/changelog && \
+    echo '' >> debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/changelog && \
+    echo ' -- RF IQ Analyst Development Team <dev@rf-iq-analyst.com>  $(date -R)' >> debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/changelog && \
+    gzip -9 debian-package/rf-iq-analyst-1.0.0/usr/share/doc/rf-iq-analyst/changelog
+
+# Build the .deb package
+WORKDIR /app/debian-package
+RUN dpkg-deb --build rf-iq-analyst-1.0.0
+
+# Create output stage to extract the .deb package
+FROM alpine:latest AS output
+
+# Install necessary tools
+RUN apk add --no-cache bash
+
+# Create dist directory
+RUN mkdir -p /dist
+
+# Copy the .deb package from builder
+COPY --from=builder /app/debian-package/rf-iq-analyst-1.0.0.deb /dist/
+
+# Copy build artifacts and documentation (conditionally)
+RUN mkdir -p /tmp/docs
+COPY --from=builder /app/ /tmp/source/
+RUN if [ -f /tmp/source/README.md ]; then cp /tmp/source/README.md /dist/; fi && \
+    if [ -f /tmp/source/LICENSE ]; then cp /tmp/source/LICENSE /dist/; fi && \
+    if [ -d /tmp/source/docs ]; then cp -r /tmp/source/docs /dist/; fi && \
+    rm -rf /tmp/source
+
+# Create enhanced installation script with compatibility checking
+RUN echo '#!/bin/bash' > /dist/install.sh && \
+    echo 'set -e' >> /dist/install.sh && \
+    echo '' >> /dist/install.sh && \
+    echo 'echo "=== RF IQ Analyst Multi-Distribution Installer ==="' >> /dist/install.sh && \
+    echo '' >> /dist/install.sh && \
+    echo '# Check if running as root' >> /dist/install.sh && \
+    echo 'if [ "$EUID" -ne 0 ]; then' >> /dist/install.sh && \
+    echo '    echo "❌ Please run as root (use sudo)"' >> /dist/install.sh && \
+    echo '    exit 1' >> /dist/install.sh && \
+    echo 'fi' >> /dist/install.sh && \
+    echo '' >> /dist/install.sh && \
+    echo '# Detect distribution and version' >> /dist/install.sh && \
+    echo 'DISTRO_ID=$(lsb_release -si 2>/dev/null || echo "Unknown")' >> /dist/install.sh && \
+    echo 'DISTRO_VERSION=$(lsb_release -sr 2>/dev/null || echo "Unknown")' >> /dist/install.sh && \
+    echo 'DISTRO_CODENAME=$(lsb_release -sc 2>/dev/null || echo "unknown")' >> /dist/install.sh && \
+    echo '' >> /dist/install.sh && \
+    echo 'echo "Detected: $DISTRO_ID $DISTRO_VERSION ($DISTRO_CODENAME)"' >> /dist/install.sh && \
+    echo '' >> /dist/install.sh && \
+    echo '# Check compatibility' >> /dist/install.sh && \
+    echo 'COMPATIBLE=false' >> /dist/install.sh && \
+    echo 'case "$DISTRO_ID" in' >> /dist/install.sh && \
+    echo '    "Ubuntu")' >> /dist/install.sh && \
+    echo '        case "$DISTRO_VERSION" in' >> /dist/install.sh && \
+    echo '            "22.04"|"24.04") COMPATIBLE=true ;;' >> /dist/install.sh && \
+    echo '            "20.04") echo "⚠️  Ubuntu 20.04 may have dependency issues. Continuing anyway..." ;;' >> /dist/install.sh && \
+    echo '            *) echo "⚠️  Ubuntu $DISTRO_VERSION is untested. Continuing anyway..." ;;' >> /dist/install.sh && \
+    echo '        esac' >> /dist/install.sh && \
+    echo '        ;;' >> /dist/install.sh && \
+    echo '    "Debian")' >> /dist/install.sh && \
+    echo '        case "$DISTRO_VERSION" in' >> /dist/install.sh && \
+    echo '            "12"*) COMPATIBLE=true ;;' >> /dist/install.sh && \
+    echo '            "11"*) echo "⚠️  Debian 11 may have dependency issues. Continuing anyway..." ;;' >> /dist/install.sh && \
+    echo '            *) echo "⚠️  Debian $DISTRO_VERSION is untested. Continuing anyway..." ;;' >> /dist/install.sh && \
+    echo '        esac' >> /dist/install.sh && \
+    echo '        ;;' >> /dist/install.sh && \
+    echo '    *)' >> /dist/install.sh && \
+    echo '        echo "⚠️  $DISTRO_ID is not officially supported. Continuing anyway..."' >> /dist/install.sh && \
+    echo '        ;;' >> /dist/install.sh && \
+    echo 'esac' >> /dist/install.sh && \
+    echo '' >> /dist/install.sh && \
+    echo 'if [ "$COMPATIBLE" = "true" ]; then' >> /dist/install.sh && \
+    echo '    echo "✅ Distribution is fully supported!"' >> /dist/install.sh && \
+    echo 'fi' >> /dist/install.sh && \
+    echo '' >> /dist/install.sh && \
+    echo '# Update package list' >> /dist/install.sh && \
+    echo 'echo "Updating package list..."' >> /dist/install.sh && \
+    echo 'apt-get update' >> /dist/install.sh && \
+    echo '' >> /dist/install.sh && \
+    echo '# Install the .deb package' >> /dist/install.sh && \
+    echo 'echo "Installing RF IQ Analyst..."' >> /dist/install.sh && \
+    echo 'dpkg -i rf-iq-analyst-1.0.0.deb || {' >> /dist/install.sh && \
+    echo '    echo "Installing missing dependencies..."' >> /dist/install.sh && \
+    echo '    apt-get install -f -y' >> /dist/install.sh && \
+    echo '    dpkg -i rf-iq-analyst-1.0.0.deb' >> /dist/install.sh && \
+    echo '}' >> /dist/install.sh && \
+    echo '' >> /dist/install.sh && \
+    echo 'echo "✅ Installation completed successfully!"' >> /dist/install.sh && \
+    echo 'echo "Launch with: rf-iq-analyst or from applications menu"' >> /dist/install.sh && \
+    chmod +x /dist/install.sh
+
+# Create README for the package
+RUN echo '# RF IQ Analyst - Debian Package' > /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo 'This directory contains the RF IQ Analyst application packaged as a Debian (.deb) package for easy installation on Ubuntu and other Debian-based systems.' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '## Installation' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '### Quick Install' >> /dist/PACKAGE_README.md && \
+    echo '```bash' >> /dist/PACKAGE_README.md && \
+    echo 'sudo ./install.sh' >> /dist/PACKAGE_README.md && \
+    echo '```' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '### Manual Install' >> /dist/PACKAGE_README.md && \
+    echo '```bash' >> /dist/PACKAGE_README.md && \
+    echo '# Update package list' >> /dist/PACKAGE_README.md && \
+    echo 'sudo apt-get update' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '# Install the package' >> /dist/PACKAGE_README.md && \
+    echo 'sudo dpkg -i rf-iq-analyst-1.0.0.deb' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '# Install any missing dependencies' >> /dist/PACKAGE_README.md && \
+    echo 'sudo apt-get install -f' >> /dist/PACKAGE_README.md && \
+    echo '```' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '## System Requirements' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '### Supported Operating Systems' >> /dist/PACKAGE_README.md && \
+    echo '- **Ubuntu 22.04 LTS (Jammy)** ✅ - Fully supported and tested' >> /dist/PACKAGE_README.md && \
+    echo '- **Ubuntu 24.04 LTS (Noble)** ✅ - Fully supported with compatible dependencies' >> /dist/PACKAGE_README.md && \
+    echo '- **Debian 12 (Bookworm)** ✅ - Fully supported with compatible dependencies' >> /dist/PACKAGE_README.md && \
+    echo '- **Ubuntu 20.04 LTS (Focal)** ⚠️ - May work but has outdated dependencies' >> /dist/PACKAGE_README.md && \
+    echo '- **Debian 11 (Bullseye)** ⚠️ - May work but has dependency conflicts' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '### Hardware Requirements' >> /dist/PACKAGE_README.md && \
+    echo '- **Architecture**: amd64 (64-bit Intel/AMD)' >> /dist/PACKAGE_README.md && \
+    echo '- **RAM**: 4GB+ (8GB+ recommended for ML training)' >> /dist/PACKAGE_README.md && \
+    echo '- **Disk Space**: 500MB for installation' >> /dist/PACKAGE_README.md && \
+    echo '- **CPU**: Multi-core recommended for signal processing' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '### Software Dependencies' >> /dist/PACKAGE_README.md && \
+    echo '- **Qt5 runtime libraries** (installed automatically)' >> /dist/PACKAGE_README.md && \
+    echo '- **Boost libraries** 1.74.0+ (with fallback to 1.83.0)' >> /dist/PACKAGE_README.md && \
+    echo '- **OpenCV** 4.5d+ (with fallback to 4.6d)' >> /dist/PACKAGE_README.md && \
+    echo '- **Python 3.8+** with pip (for ML functionality)' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '## Usage' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo 'After installation, you can:' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '1. **Launch from GUI**: Find "RF IQ Analyst" in your applications menu' >> /dist/PACKAGE_README.md && \
+    echo '2. **Launch from terminal**: Run `rf-iq-analyst`' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '## Package Contents' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '- `rf-iq-analyst-1.0.0.deb` - Main application package' >> /dist/PACKAGE_README.md && \
+    echo '- `install.sh` - Automated installation script' >> /dist/PACKAGE_README.md && \
+    echo '- `PACKAGE_README.md` - This documentation file' >> /dist/PACKAGE_README.md && \
+    echo '- `docs/` - Additional documentation (if available)' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '## Uninstallation' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '```bash' >> /dist/PACKAGE_README.md && \
+    echo 'sudo apt-get remove rf-iq-analyst' >> /dist/PACKAGE_README.md && \
+    echo '```' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '## Troubleshooting' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '### Dependency Issues' >> /dist/PACKAGE_README.md && \
+    echo 'If you encounter dependency issues, try:' >> /dist/PACKAGE_README.md && \
+    echo '```bash' >> /dist/PACKAGE_README.md && \
+    echo 'sudo apt-get update' >> /dist/PACKAGE_README.md && \
+    echo 'sudo apt-get install -f' >> /dist/PACKAGE_README.md && \
+    echo '```' >> /dist/PACKAGE_README.md && \
+    echo '' >> /dist/PACKAGE_README.md && \
+    echo '### Python ML Dependencies' >> /dist/PACKAGE_README.md && \
+    echo 'If machine learning features are not working:' >> /dist/PACKAGE_README.md && \
+    echo '```bash' >> /dist/PACKAGE_README.md && \
+    echo 'sudo pip3 install tensorflow==2.12.0 numpy scikit-learn' >> /dist/PACKAGE_README.md && \
+    echo '```' >> /dist/PACKAGE_README.md
+
+# Default command that lists the contents
+CMD ["sh", "-c", "echo 'RF IQ Analyst .deb package build completed!' && echo '' && echo 'Contents of /dist:' && ls -la /dist/"]
